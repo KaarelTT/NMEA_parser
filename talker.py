@@ -7,6 +7,8 @@ import socket
 
 def udp_listener():
     rospy.init_node('udp_listener', anonymous=True)
+
+    # Publishers for Furuno SCX20 data
     raw_pub = rospy.Publisher('chatter', String, queue_size=10)
     yaw_pub = rospy.Publisher('yaw', String, queue_size=10)
     pitch_pub = rospy.Publisher('pitch', String, queue_size=10)
@@ -17,9 +19,17 @@ def udp_listener():
     air_temp_pub = rospy.Publisher('air_temp', String, queue_size=10)
     baro_press_pub = rospy.Publisher('baro_press', String, queue_size=10)
 
+    # Publishers for AIS data
+    ais_ships_pub = rospy.Publisher('ais_ships', String, queue_size=10)
+    ais_status_pub = rospy.Publisher('ais_status', String, queue_size=10)
+
+    # Publishers for additional NMEA data
+    vtgs_pub = rospy.Publisher('vtgs', String, queue_size=10)
+    gpgga_pub = rospy.Publisher('gpgga', String, queue_size=10)
+
     rate = rospy.Rate(10)  # 10hz
 
-    # Set up the UDP socket
+    # Set up the UDP socket for both Furuno SCX20 and em-trak B921 AIS
     UDP_IP = "0.0.0.0"  # Listen on all interfaces
     UDP_PORT = 10110
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -28,50 +38,62 @@ def udp_listener():
     rospy.loginfo("UDP Listener started on port %d", UDP_PORT)
 
     while not rospy.is_shutdown():
-        data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
-        rospy.loginfo("Received packet from %s:%d", addr[0], addr[1])
-        rospy.loginfo("Packet data: %s", data)
+        try:
+            # Read data from UDP socket
+            data, addr = sock.recvfrom(1024)  # buffer size is 1024 bytes
+            message = data.decode('utf-8').strip()
+            rospy.loginfo("Received packet from %s:%d", addr[0], addr[1])
+            rospy.loginfo("Packet data: %s", message)
 
-        # Publish raw data
-        rospy.loginfo("Publishing raw data")
-        raw_pub.publish(data.decode('utf-8'))
+            # Publish raw data
+            raw_pub.publish(message)
 
-        # Parse and publish specific data
-        message = data.decode('utf-8').strip()
-        if message.startswith('$YXXDR'):
-            parts = message.split(',')
-            for i in range(0, len(parts) - 1, 5):
-                if parts[i + 1] == 'A':
-                    if parts[i + 3] == 'Yaw':
-                        rospy.loginfo("Publishing Yaw data")
-                        yaw_pub.publish(parts[i + 2])
-                    elif parts[i + 3] == 'Pitch':
-                        rospy.loginfo("Publishing Pitch data")
-                        pitch_pub.publish(parts[i + 2])
-                    elif parts[i + 3] == 'Roll':
-                        rospy.loginfo("Publishing Roll data")
-                        roll_pub.publish(parts[i + 2])
-        elif message.startswith('$HEHDT'):
-            parts = message.split(',')
-            rospy.loginfo("Publishing Heading data")
-            heading_pub.publish(parts[1])
-        elif message.startswith('$TIROT'):
-            parts = message.split(',')
-            rospy.loginfo("Publishing Rate of Turn data")
-            rate_of_turn_pub.publish(parts[1])
-        elif message.startswith('$WIXDR'):
-            parts = message.split(',')
-            for i in range(0, len(parts) - 1, 5):
-                if parts[i + 1] == 'C':
-                    rospy.loginfo("Publishing Air Temperature data")
-                    air_temp_pub.publish(parts[i + 2])
-                elif parts[i + 1] == 'P':
-                    rospy.loginfo("Publishing Barometric Pressure data")
-                    baro_press_pub.publish(parts[i + 2])
-        elif message.startswith('$YXXDR,D'):
-            parts = message.split(',')
-            rospy.loginfo("Publishing Heave data")
-            heave_pub.publish(parts[2])
+            # Parse and publish specific data based on NMEA sentence type
+            if message.startswith('$YXXDR'):
+                parts = message.split(',')
+                for i in range(0, len(parts) - 1, 5):
+                    if parts[i + 1] == 'A':
+                        if parts[i + 3] == 'Yaw':
+                            yaw_pub.publish(parts[i + 2])
+                        elif parts[i + 3] == 'Pitch':
+                            pitch_pub.publish(parts[i + 2])
+                        elif parts[i + 3] == 'Roll':
+                            roll_pub.publish(parts[i + 2])
+            elif message.startswith('$HEHDT'):
+                parts = message.split(',')
+                heading_pub.publish(parts[1])
+            elif message.startswith('$TIROT'):
+                parts = message.split(',')
+                rate_of_turn_pub.publish(parts[1])
+            elif message.startswith('$WIXDR'):
+                parts = message.split(',')
+                for i in range(0, len(parts) - 1, 5):
+                    if parts[i + 1] == 'C':
+                        air_temp_pub.publish(parts[i + 2])
+                    elif parts[i + 1] == 'P':
+                        baro_press_pub.publish(parts[i + 2])
+            elif message.startswith('$YXXDR,D'):
+                parts = message.split(',')
+                heave_pub.publish(parts[2])
+            elif message.startswith('!AIVDM') or message.startswith('!AIVDO'):
+                # AIS specific sentences
+                ais_ships_pub.publish(message)
+                ais_status_pub.publish("AIS module operational")
+            elif message.startswith('$GPVTG'):
+                # Handle GPVTG sentence here
+                vtgs_pub.publish(message)
+            elif message.startswith('$GPGGA'):
+                # Handle GPGGA sentence here
+                gpgga_pub.publish(message)
+            elif message.startswith('$VDVBW'):
+                # Handle VDVBW sentence here
+                rospy.loginfo("VDVBW sentence: %s", message)
+            else:
+                rospy.logwarn("Unrecognized NMEA sentence: %s", message)
+
+        except Exception as e:
+            rospy.logerr("Error: %s", str(e))
+            ais_status_pub.publish("AIS module error: " + str(e))
 
         rate.sleep()
 
