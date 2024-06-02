@@ -5,8 +5,6 @@ from std_msgs.msg import Float32,String
 import socket
 ships = {}
 
-
-
 def nmea_parser():
     rospy.init_node('udp_listener', anonymous=True)
 
