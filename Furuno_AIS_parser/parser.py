@@ -101,7 +101,7 @@ def udp_listener():
                 latitude_pub.publish(latitude)
                 longitude_pub.publish(longitude)
                 rospy.loginfo("Latitude:%f, Longitude:%f", latitude, longitude)
-
+            #TRUE COURSE, SPEED IN KMH AND KNOTS
             elif message.startswith('$GPVTG'):
                 parts = message.split(',')
 
