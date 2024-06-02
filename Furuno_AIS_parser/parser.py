@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 import rospy
-from std_msgs.msg import Float32,Int32, String
+from std_msgs.msg import Float32,String
 import socket
+ships = {}
 
 
 
-def udp_listener():
+def nmea_parser():
     rospy.init_node('udp_listener', anonymous=True)
 
     # Publishers for Furuno SCX20 data
@@ -21,7 +22,8 @@ def udp_listener():
     speedknots_pub = rospy.Publisher('speedknots', Float32, queue_size=10)
     truecourse_pub = rospy.Publisher('truecourse', Float32, queue_size=10)
     heave_pub = rospy.Publisher('heave', Float32, queue_size=10)
-
+    AIS_pub = rospy.Publisher('aivdm', String, queue_size=10)
+    AIS_array_pub = rospy.Publisher('aisarray', String, queue_size=10)
     rate = rospy.Rate(50)  # 50hz
 
     # Set up the UDP socket for both Furuno SCX20 and em-trak B921 AIS
@@ -101,6 +103,8 @@ def udp_listener():
                 latitude_pub.publish(latitude)
                 longitude_pub.publish(longitude)
                 rospy.loginfo("Latitude:%f, Longitude:%f", latitude, longitude)
+
+
             #TRUE COURSE, SPEED IN KMH AND KNOTS
             elif message.startswith('$GPVTG'):
                 parts = message.split(',')
@@ -114,14 +118,25 @@ def udp_listener():
                 truecourse_pub.publish(true_course)
                 rospy.loginfo("Speed (knots):%f, True course:%f", ground_speed_knots, true_course)
 
+            #AIVDM decoding
+            elif message.startswith('!AIVDM'):
+                rospy.loginfo("AIVDM processed")
+                AIS_pub.publish(message)
+              #  process_ais_message(message)
+
+
+
+
+
         except Exception as e:
             rospy.logerr("Error: %s", str(e))
 
         rate.sleep()
 
 
+
 if __name__ == '__main__':
     try:
-        udp_listener()
+        nmea_parser()
     except rospy.ROSInterruptException:
         pass
