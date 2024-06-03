@@ -1,56 +1,74 @@
 from pyais import decode
 from pyais.exceptions import InvalidNMEAMessageException
-from pyais.messages import NMEAMessage
+import time
 
-# Define a data structure to hold ship information
+
 class ShipInfo:
-    def __init__(self, mmsi, position, heading, speed):
+    def __init__(self, mmsi, position, heading, speed, timestamp):
         self.mmsi = mmsi
         self.position = position
         self.heading = heading
         self.speed = speed
+        self.timestamp = timestamp
 
+
+# Dictionary to store ships by their MMSI
+ships = {}
 # Temporary storage for multi-part messages
 multi_part_messages = {}
 
+
 def process_ais_message(message):
-    global multi_part_messages
+    global ships, multi_part_messages
 
     try:
-        nmea_message = NMEAMessage(message)
+        # Ensure the message is in bytes
+        if isinstance(message, str):
+            message = message.encode('utf-8')
 
-        # Check if the message is multi-part
-        if nmea_message.is_multi:
-            part_number = nmea_message.part_number
-            total_parts = nmea_message.total_parts
-            sequence_id = nmea_message.sequence_id
+        # Split the message into parts
+        message_parts = message.decode('utf-8').split(',')
 
-            # Initialize the sequence ID if not present
-            if sequence_id not in multi_part_messages:
-                multi_part_messages[sequence_id] = [None] * total_parts
+        if message_parts[0] != "!AIVDM":
+            return None  # Not an AIVDM message
 
-            # Store the part
-            multi_part_messages[sequence_id][part_number - 1] = nmea_message
+        total_parts = int(message_parts[1])
+        part_number = int(message_parts[2])
+        sequence_id = message_parts[3]
+        message_content = message_parts[5]
 
-            # Check if we have received all parts
-            if None not in multi_part_messages[sequence_id]:
-                full_message = "".join([part.data for part in multi_part_messages[sequence_id]])
-                del multi_part_messages[sequence_id]
-                decoded_message = decode(NMEAMessage(full_message))
-            else:
-                return None  # Wait for more parts to complete the message
+        # Initialize the sequence ID if not present
+        if sequence_id not in multi_part_messages:
+            multi_part_messages[sequence_id] = [None] * total_parts
+
+        # Store the part
+        multi_part_messages[sequence_id][part_number - 1] = message_content
+
+        # Check if we have received all parts
+        if None not in multi_part_messages[sequence_id]:
+            full_message = "!AIVDM,1,1,,A," + "".join(multi_part_messages[sequence_id]) + ",0*00"
+            del multi_part_messages[sequence_id]
+            decoded_message = decode(full_message.encode('utf-8'))
         else:
-            decoded_message = decode(nmea_message)
+            return None  # Wait for more parts to complete the message
 
-        # Extract required information
-        mmsi = decoded_message['mmsi']
-        position = (decoded_message['x'], decoded_message['y'])
-        heading = decoded_message['heading']
-        speed = decoded_message['sog']
+        # Extract required information using attributes instead of subscripts
+        mmsi = decoded_message.mmsi
+        position = (getattr(decoded_message, 'lat', None), getattr(decoded_message, 'lon', None))
+        heading = getattr(decoded_message, 'heading', None)
+        speed = getattr(decoded_message, 'sog', None)
+        timestamp = time.time()
 
-        ship_info = ShipInfo(mmsi, position, heading, speed)
+        # Update the ship information in the dictionary
+        ships[mmsi] = ShipInfo(mmsi, position, heading, speed, timestamp)
 
-        return ship_info
+        # Clean up old entries
+        current_time = time.time()
+        for mmsi in list(ships.keys()):
+            if current_time - ships[mmsi].timestamp > 600:
+                del ships[mmsi]
+
+        return ships
 
     except InvalidNMEAMessageException as e:
         print(f"Invalid NMEA message: {message}")

@@ -3,7 +3,14 @@
 import rospy
 from std_msgs.msg import Float32,String
 import socket
-ships = {}
+from AIVDM_decoder import process_ais_message
+
+def format_ships_data(ships):
+    formatted_data = ""
+    for ship in ships.values():
+        formatted_data += f"MMSI: {ship.mmsi}, Position: {ship.position}, Heading: {ship.heading}, Speed: {ship.speed}\n"
+    return formatted_data
+
 
 def nmea_parser():
     rospy.init_node('udp_listener', anonymous=True)
@@ -30,7 +37,7 @@ def nmea_parser():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((UDP_IP, UDP_PORT))
 
-    rospy.loginfo("UDP Listener started on port %d", UDP_PORT)
+    #rospy.loginfo("UDP Listener started on port %d", UDP_PORT)
 
     while not rospy.is_shutdown():
         try:
@@ -49,7 +56,7 @@ def nmea_parser():
                 parts = message.split(',')
                 heading = float(parts[1])
                 heading_pub.publish(heading)
-                rospy.loginfo("Heading %f", heading)
+                #rospy.loginfo("Heading %f", heading)
 
             #ROLL,PITCH,YAW
             elif message.startswith('$YXXDR'):
@@ -63,11 +70,11 @@ def nmea_parser():
                     yaw_pub.publish(yaw)
                     pitch_pub.publish(pitch)
                     roll_pub.publish(roll)
-                    rospy.loginfo("Attitude Roll:%f, Pitch:%f, Yaw:%f", roll,pitch,yaw)
+                    #rospy.loginfo("Attitude Roll:%f, Pitch:%f, Yaw:%f", roll,pitch,yaw)
                 elif parts[1] == 'D':
                     heave = float(parts[2])
                     heave_pub.publish(heave)
-                    rospy.loginfo("Heave:%f", heave)
+                    #rospy.loginfo("Heave:%f", heave)
 
             #LATITUDE, LONGITUDE
             elif message.startswith('$GPGGA'):
@@ -100,7 +107,7 @@ def nmea_parser():
 
                 latitude_pub.publish(latitude)
                 longitude_pub.publish(longitude)
-                rospy.loginfo("Latitude:%f, Longitude:%f", latitude, longitude)
+                #rospy.loginfo("Latitude:%f, Longitude:%f", latitude, longitude)
 
 
             #TRUE COURSE, SPEED IN KMH AND KNOTS
@@ -114,14 +121,17 @@ def nmea_parser():
                 speedkmh_pub.publish(ground_speed_kmh)
                 speedknots_pub.publish(ground_speed_knots)
                 truecourse_pub.publish(true_course)
-                rospy.loginfo("Speed (knots):%f, True course:%f", ground_speed_knots, true_course)
+                #rospy.loginfo("Speed (knots):%f, True course:%f", ground_speed_knots, true_course)
 
             #AIVDM decoding
             elif message.startswith('!AIVDM'):
                 rospy.loginfo("AIVDM processed")
                 AIS_pub.publish(message)
               #  process_ais_message(message)
-
+                ships = process_ais_message(message)
+                if ships:
+                    formatted_data = format_ships_data(ships)
+                    AIS_array_pub .publish(formatted_data)
 
 
 
