@@ -8,7 +8,7 @@ from AIVDM_decoder import process_ais_message
 def format_ships_data(ships):
     formatted_data = ""
     for ship in ships.values():
-        formatted_data += f"MMSI: {ship.mmsi}, Position: {ship.position}, Heading: {ship.heading}, Speed: {ship.speed}\n"
+        formatted_data += f"MMSI: {ship.mmsi}, Name: {ship.shipname}, Pos: {ship.position}, Heading: {ship.heading}, Speed: {ship.speed}"+'\n'
     return formatted_data
 
 
